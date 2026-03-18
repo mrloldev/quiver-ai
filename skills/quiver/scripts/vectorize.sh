@@ -6,15 +6,8 @@ set -euo pipefail
 
 API_BASE="https://api.quiver.ai/v1"
 
-# Check API key
-if [ -z "${QUIVERAI_API_KEY:-}" ]; then
-  echo "Error: QUIVERAI_API_KEY is not set." >&2
-  echo "Get a key at https://app.quiver.ai/settings/api-keys" >&2
-  exit 1
-fi
-
 if [ $# -lt 1 ]; then
-  echo "Usage: vectorize.sh \"image-url-or-file\" [output-file] [--model MODEL] [--auto-crop]" >&2
+  echo "Usage: vectorize.sh \"image-url-or-file\" [output-file] [--api-key KEY] [--model MODEL] [--auto-crop]" >&2
   exit 1
 fi
 
@@ -35,11 +28,24 @@ AUTO_CROP=false
 # Parse flags
 while [ $# -gt 0 ]; do
   case "$1" in
-    --model)     MODEL="$2"; shift 2 ;;
-    --auto-crop) AUTO_CROP=true; shift ;;
+    --api-key)   QUIVERAI_API_KEY="$2"; shift 2 ;;
+    --model)     MODEL="$2";            shift 2 ;;
+    --auto-crop) AUTO_CROP=true;        shift ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
+
+# Resolve API key: env var → interactive prompt
+if [ -z "${QUIVERAI_API_KEY:-}" ]; then
+  if [ -t 0 ]; then
+    echo "QuiverAI API key not set. Get one at https://app.quiver.ai/settings/api-keys" >&2
+    read -rsp "Enter API key: " QUIVERAI_API_KEY </dev/tty
+    echo >&2
+  else
+    echo "Error: QUIVERAI_API_KEY is not set. Pass --api-key KEY or set the environment variable." >&2
+    exit 1
+  fi
+fi
 
 # Default output filename
 if [ -z "$OUTPUT_FILE" ]; then
