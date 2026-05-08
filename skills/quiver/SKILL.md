@@ -1,8 +1,8 @@
 ---
 name: quiver
-description: Generate SVGs, logos, icons, and design assets using QuiverAI. Use when asked to create logos, icons, illustrations, badges, or any vector graphics from text descriptions. Also use to vectorize/convert raster images (PNG, JPG) to SVG, or to create a new SVG illustration inspired by a reference image. Triggers on requests like "create a logo", "generate an icon", "make an SVG", "design a badge", "vectorize this image to SVG", "illustrate this image as SVG", "turn this photo into an illustration".
+description: Generate SVGs, logos, icons, and design assets using QuiverAI. Use when asked to create logos, icons, illustrations, badges, or any vector graphics from text descriptions. Also use to vectorize/convert raster images (PNG, JPG) to SVG. Triggers on requests like "create a logo", "generate an icon", "make an SVG", "design a badge", "vectorize this image to SVG", "turn this photo into an illustration".
 argument-hint: <prompt or image-url>
-allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/generate.sh), Bash(${CLAUDE_SKILL_DIR}/scripts/vectorize.sh), Bash(${CLAUDE_SKILL_DIR}/scripts/illustrate.sh)
+allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/generate.sh), Bash(${CLAUDE_SKILL_DIR}/scripts/vectorize.sh)
 ---
 
 You have access to QuiverAI's SVG generation API. Use it to create production-ready SVG graphics.
@@ -19,7 +19,7 @@ The `QUIVERAI_API_KEY` environment variable must be set. If it's missing, tell t
 | Model | Credits (generate) | Credits (vectorize) | Best for |
 |-------|-------------------|---------------------|----------|
 | `arrow-1.1` | 20 | 15 | Simple icons, logos, badges, flat/minimal designs |
-| `arrow-1.1-max` | 25 | 20 | Detailed illustrations, general-purpose (default) |
+| `arrow-1.1-max` | 25 | 20 | Detailed illustrations, general-purpose |
 | `arrow-1` | 30 | 30 | Highest quality, portraits, complex scenes |
 
 All three models accept both text and image input.
@@ -51,7 +51,7 @@ Default is `arrow-1.1`. Choose based on the request:
 Examples:
 
 ```bash
-# Basic logo (auto-selects arrow-1.1 for "logo" keyword)
+# Basic logo
 "${CLAUDE_SKILL_DIR}/scripts/generate.sh" "minimalist rocket ship logo for a tech startup" logo.svg
 
 # With style instructions
@@ -62,13 +62,13 @@ Examples:
 "${CLAUDE_SKILL_DIR}/scripts/generate.sh" "abstract wave icon" wave.svg --n 3
 # Saves: wave_1.svg, wave_2.svg, wave_3.svg
 
-# With reference image (URL)
+# Inspired by a reference image
 "${CLAUDE_SKILL_DIR}/scripts/generate.sh" "a fox mascot in the same style" mascot.svg \
   --image "https://example.com/brand-reference.png"
 
-# With reference image (local file)
-"${CLAUDE_SKILL_DIR}/scripts/generate.sh" "modern rebrand of this logo" new-logo.svg \
-  --image ./old-logo.png --model arrow-1
+# Multiple reference images
+"${CLAUDE_SKILL_DIR}/scripts/generate.sh" "icon blending these two styles" icon.svg \
+  --image ./ref1.png --image ./ref2.png
 ```
 
 ### Vectorize an image to SVG (trace/convert)
@@ -81,7 +81,7 @@ Converts a raster image into an SVG by tracing its shapes — output closely mat
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--model MODEL` | `arrow-1.1-max` | Model to use |
+| `--model MODEL` | `arrow-1.1` | Model to use |
 | `--auto-crop` | off | Auto-crop to dominant subject before vectorizing |
 | `--target-size N` | — | Resize image to N×N pixels before vectorizing (128–4096) |
 | `--temperature N` | `1` | Output randomness (0–2) |
@@ -95,61 +95,21 @@ Examples:
 # Local file with auto-crop
 "${CLAUDE_SKILL_DIR}/scripts/vectorize.sh" ./photo.png portrait.svg --auto-crop
 
-# Use flagship model for best quality
-"${CLAUDE_SKILL_DIR}/scripts/vectorize.sh" ./complex-art.png art.svg --model arrow-1
-```
-
-### Image-to-illustration (create new SVG inspired by an image)
-
-Generates a **brand-new SVG illustration** inspired by a reference image — NOT a trace. Uses the generate endpoint with the image as a reference, so the output is a creative reinterpretation, not a copy.
-
-```bash
-"${CLAUDE_SKILL_DIR}/scripts/illustrate.sh" "IMAGE_URL_OR_LOCAL_FILE" [OUTPUT_FILE] [OPTIONS]
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--prompt "DESCRIPTION"` | auto | What to generate, informed by the image |
-| `--model MODEL` | `arrow-1.1` | Model to use |
-| `--instructions "STYLE"` | — | Style/formatting guidance |
-| `--n N` | `1` | Number of variants |
-| `--image IMAGE_URL_OR_FILE` | — | Additional reference images (repeatable) |
-| `--temperature N` | `1` | Output randomness (0–2) |
-
-Examples:
-
-```bash
-# Turn a photo into an SVG illustration
-"${CLAUDE_SKILL_DIR}/scripts/illustrate.sh" ./cat-photo.jpg cat-illustration.svg \
-  --prompt "a playful cartoon cat illustration"
-
-# From URL with style guidance
-"${CLAUDE_SKILL_DIR}/scripts/illustrate.sh" "https://example.com/cityscape.jpg" city.svg \
-  --prompt "minimalist city skyline illustration" \
-  --instructions "flat colors, geometric shapes, no gradients"
-
-# Flagship model for portrait illustration
-"${CLAUDE_SKILL_DIR}/scripts/illustrate.sh" ./portrait.jpg portrait.svg \
-  --prompt "stylized portrait illustration" \
-  --model arrow-1
-
-# Multiple variants
-"${CLAUDE_SKILL_DIR}/scripts/illustrate.sh" ./logo.png logo-reimagined.svg \
-  --prompt "modern reimagining of this brand logo" --n 3
+# Resize before vectorizing
+"${CLAUDE_SKILL_DIR}/scripts/vectorize.sh" ./large-photo.png art.svg --target-size 512
 ```
 
 ## Choosing the right command
 
 | Goal | Command |
 |------|---------|
-| Create SVG from text description | `generate.sh` |
+| Create SVG from text (or text + reference images) | `generate.sh` |
 | Convert/trace an existing image to SVG | `vectorize.sh` |
-| Generate a new illustration inspired by an image | `illustrate.sh` |
 
 ## Workflow
 
-1. **Understand the request** — logo, icon, illustration, badge, trace, or image-inspired illustration
-2. **Pick the right script** — generate for text, vectorize for tracing, illustrate for image-inspired creation
+1. **Understand the request** — logo, icon, illustration, badge, or trace
+2. **Pick the right script** — `generate.sh` for anything creative, `vectorize.sh` for tracing
 3. **Write a specific prompt** — include the subject, use case, and key visual elements
 4. **Add `--instructions`** to control style — e.g. `"flat monochrome, rounded corners, minimal detail"`
 5. **Run the script** and report where the SVG was saved
