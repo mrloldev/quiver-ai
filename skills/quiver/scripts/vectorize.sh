@@ -1,13 +1,13 @@
 #!/bin/bash
 # QuiverAI Image-to-SVG Vectorizer
-# Usage: vectorize.sh "image-url-or-file" [output-file] [--model MODEL] [--auto-crop]
+# Usage: vectorize.sh "image-url-or-file" [output-file] [--model MODEL] [--auto-crop] [--target-size N] [--temperature N]
 
 set -euo pipefail
 
 API_BASE="https://api.quiver.ai/v1"
 
 if [ $# -lt 1 ]; then
-  echo "Usage: vectorize.sh \"image-url-or-file\" [output-file] [--api-key KEY] [--model MODEL] [--auto-crop]" >&2
+  echo "Usage: vectorize.sh \"image-url-or-file\" [output-file] [--api-key KEY] [--model MODEL] [--auto-crop] [--target-size N] [--temperature N]" >&2
   exit 1
 fi
 
@@ -22,15 +22,19 @@ if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
 fi
 
 # Defaults
-MODEL="arrow-preview"
+MODEL="arrow-1.1"
 AUTO_CROP=false
+TARGET_SIZE=""
+TEMPERATURE=""
 
 # Parse flags
 while [ $# -gt 0 ]; do
   case "$1" in
-    --api-key)   QUIVERAI_API_KEY="$2"; shift 2 ;;
-    --model)     MODEL="$2";            shift 2 ;;
-    --auto-crop) AUTO_CROP=true;        shift ;;
+    --api-key)     QUIVERAI_API_KEY="$2"; shift 2 ;;
+    --model)       MODEL="$2";            shift 2 ;;
+    --auto-crop)   AUTO_CROP=true;        shift ;;
+    --target-size) TARGET_SIZE="$2";      shift 2 ;;
+    --temperature) TEMPERATURE="$2";      shift 2 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -72,9 +76,15 @@ PAYLOAD=$(jq -n \
   --arg model "$MODEL" \
   --argjson image "$IMAGE_JSON" \
   --argjson auto_crop "$AUTO_CROP" \
-  '{model: $model, image: $image, stream: false, auto_crop: $auto_crop}')
+  --arg target_size "$TARGET_SIZE" \
+  --arg temperature "$TEMPERATURE" \
+  '{model: $model, image: $image, stream: false, auto_crop: $auto_crop} +
+   if $target_size != "" then {target_size: ($target_size | tonumber)} else {} end +
+   if $temperature != "" then {temperature: ($temperature | tonumber)} else {} end')
 
 echo "Model: $MODEL | Auto-crop: $AUTO_CROP" >&2
+[ -n "$TARGET_SIZE" ] && echo "Target size: ${TARGET_SIZE}px" >&2
+[ -n "$TEMPERATURE" ] && echo "Temperature: $TEMPERATURE" >&2
 
 RESPONSE=$(curl -s -X POST "$API_BASE/svgs/vectorizations" \
   -H "Authorization: Bearer $QUIVERAI_API_KEY" \

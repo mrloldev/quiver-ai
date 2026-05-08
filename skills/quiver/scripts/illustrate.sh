@@ -1,18 +1,21 @@
 #!/bin/bash
-# QuiverAI Text-to-SVG Generator
-# Usage: generate.sh "prompt" [output-file] [--model MODEL] [--n N] [--instructions "STYLE"] [--image IMAGE] [--temperature N]
+# QuiverAI Image-to-Illustration Generator
+# Generates a NEW SVG illustration inspired by a reference image -- NOT a pixel-for-pixel trace.
+# Uses the generate endpoint with the image as a reference.
+#
+# Usage: illustrate.sh "image-url-or-file" [output-file] [--prompt "DESCRIPTION"] [--model MODEL]
+#                      [--instructions "STYLE"] [--n N] [--image EXTRA_IMAGE] [--temperature N]
 
 set -euo pipefail
 
 API_BASE="https://api.quiver.ai/v1"
 
 if [ $# -lt 1 ]; then
-  echo "Usage: generate.sh \"prompt\" [output-file] [--api-key KEY] [--model MODEL] [--n N] [--instructions \"STYLE\"] [--image IMAGE_URL_OR_FILE] [--temperature N]" >&2
+  echo "Usage: illustrate.sh \"image-url-or-file\" [output-file] [--api-key KEY] [--prompt \"DESCRIPTION\"] [--model MODEL] [--instructions \"STYLE\"] [--n N] [--image EXTRA_IMAGE] [--temperature N]" >&2
   exit 1
 fi
 
-# Parse positional args
-PROMPT="$1"
+IMAGE_INPUT="$1"
 shift
 
 # Second arg is output file if it doesn't start with --
@@ -23,20 +26,22 @@ if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
 fi
 
 # Defaults
+PROMPT=""
 MODEL="arrow-1.1"
-N=1
 INSTRUCTIONS=""
-IMAGES=()
+N=1
+EXTRA_IMAGES=()
 TEMPERATURE=""
 
 # Parse flags
 while [ $# -gt 0 ]; do
   case "$1" in
     --api-key)      QUIVERAI_API_KEY="$2"; shift 2 ;;
+    --prompt)       PROMPT="$2";           shift 2 ;;
     --model)        MODEL="$2";            shift 2 ;;
-    --n)            N="$2";                shift 2 ;;
     --instructions) INSTRUCTIONS="$2";     shift 2 ;;
-    --image)        IMAGES+=("$2");        shift 2 ;;
+    --n)            N="$2";                shift 2 ;;
+    --image)        EXTRA_IMAGES+=("$2");  shift 2 ;;
     --temperature)  TEMPERATURE="$2";      shift 2 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
@@ -54,37 +59,47 @@ if [ -z "${QUIVERAI_API_KEY:-}" ]; then
   fi
 fi
 
-# Default output filename from slugified prompt
+# Build a default prompt if none provided
+if [ -z "$PROMPT" ]; then
+  PROMPT="Create an SVG illustration inspired by this reference image"
+fi
+
+# Default output filename from input image basename
 if [ -z "$OUTPUT_FILE" ]; then
-  SLUG=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-\|-$//g' | cut -c1-40)
-  OUTPUT_FILE="${SLUG}.svg"
+  BASENAME=$(basename "$IMAGE_INPUT" | sed 's/\.[^.]*$//')
+  OUTPUT_FILE="${BASENAME}-illustration.svg"
 fi
 
 # Strip .svg extension for multi-output naming
 BASE="${OUTPUT_FILE%.svg}"
 
-# Build references array from --image flags
-REFERENCES_JSON="[]"
-if [ ${#IMAGES[@]} -gt 0 ]; then
-  REFS="[]"
-  for img in "${IMAGES[@]}"; do
-    if [[ "$img" =~ ^https?:// ]]; then
-      REFS=$(echo "$REFS" | jq --arg url "$img" '. + [{url: $url}]')
-      echo "Reference image (URL): $img" >&2
-    else
-      if [ ! -f "$img" ]; then
-        echo "Error: Image file not found: $img" >&2
-        exit 1
-      fi
-      B64=$(base64 < "$img")
-      REFS=$(echo "$REFS" | jq --arg b64 "$B64" '. + [{base64: $b64}]')
-      echo "Reference image (file): $img" >&2
+# Build references array: main image first, then any --image extras
+build_image_ref() {
+  local img="$1"
+  if [[ "$img" =~ ^https?:// ]]; then
+    jq -n --arg url "$img" '{url: $url}'
+    echo "Reference image (URL): $img" >&2
+  else
+    if [ ! -f "$img" ]; then
+      echo "Error: Image file not found: $img" >&2
+      exit 1
     fi
-  done
-  REFERENCES_JSON="$REFS"
-fi
+    local b64
+    b64=$(base64 < "$img")
+    jq -n --arg b64 "$b64" '{base64: $b64}'
+    echo "Reference image (file): $img" >&2
+  fi
+}
 
-# Build JSON payload
+MAIN_REF=$(build_image_ref "$IMAGE_INPUT")
+REFERENCES_JSON=$(jq -n --argjson ref "$MAIN_REF" '[$ref]')
+
+for img in "${EXTRA_IMAGES[@]}"; do
+  REF=$(build_image_ref "$img")
+  REFERENCES_JSON=$(echo "$REFERENCES_JSON" | jq --argjson ref "$REF" '. + [$ref]')
+done
+
+# Build JSON payload -- uses the generate endpoint with images as references
 PAYLOAD=$(jq -n \
   --arg model "$MODEL" \
   --arg prompt "$PROMPT" \
@@ -92,12 +107,11 @@ PAYLOAD=$(jq -n \
   --arg instructions "$INSTRUCTIONS" \
   --argjson references "$REFERENCES_JSON" \
   --arg temperature "$TEMPERATURE" \
-  '{model: $model, prompt: $prompt, n: $n, stream: false} +
+  '{model: $model, prompt: $prompt, n: $n, stream: false, references: $references} +
    if $instructions != "" then {instructions: $instructions} else {} end +
-   if ($references | length) > 0 then {references: $references} else {} end +
    if $temperature != "" then {temperature: ($temperature | tonumber)} else {} end')
 
-echo "Generating SVG with QuiverAI..." >&2
+echo "Generating illustration with QuiverAI..." >&2
 echo "Prompt: $PROMPT" >&2
 [ -n "$INSTRUCTIONS" ] && echo "Instructions: $INSTRUCTIONS" >&2
 echo "Model: $MODEL | Variants: $N" >&2
